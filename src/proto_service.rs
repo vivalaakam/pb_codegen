@@ -1,11 +1,5 @@
-mod create;
-mod delete;
-mod get;
-mod list;
-pub mod messages;
-mod update;
-
 use std::collections::HashMap;
+use std::fmt::Display;
 
 use prost_types::{DescriptorProto, ServiceDescriptorProto};
 use quote::__private::TokenStream;
@@ -18,16 +12,31 @@ use crate::proto_service::list::proto_service_list;
 use crate::proto_service::update::proto_service_update;
 use crate::CodegenPackage;
 
-pub fn proto_service(
+mod create;
+mod delete;
+mod get;
+mod list;
+pub mod messages;
+mod update;
+
+pub fn proto_service<T>(
     service: &ServiceDescriptorProto,
     messages: &HashMap<&str, DescriptorProto>,
     package: &CodegenPackage,
-) -> TokenStream {
+    namespace: &T,
+) -> TokenStream
+where
+    T: Display,
+{
     let message = messages.get(&package.message).expect("oops");
 
-    let snake = naive_snake_case(message.name());
     let service_name = quote::format_ident!("{}Service", message.name());
-    let service_server = quote::format_ident!("{}_service_server", snake);
+    let service_impl_name = quote::format_ident!(
+        "proto::{}::{}_service_server::{}Service",
+        namespace.to_string(),
+        naive_snake_case(message.name()),
+        service_name
+    );
 
     let list_tokens = proto_service_list(service, messages, package);
     let get_tokens = proto_service_get(service, messages, package);
@@ -37,7 +46,7 @@ pub fn proto_service(
 
     quote::quote! {
         #[tonic::async_trait]
-        impl proto::santa_cruz::#service_server::#service_name for #service_name
+        impl #service_impl_name for #service_name
         {
             #list_tokens
 

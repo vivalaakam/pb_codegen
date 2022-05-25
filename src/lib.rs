@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::fmt::Error;
+use std::fmt::{Display, Error};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -8,8 +8,9 @@ use prost::Message;
 use prost_types::{
     DescriptorProto, EnumDescriptorProto, FileDescriptorSet, ServiceDescriptorProto,
 };
-use proto_service::messages::proto_service_messages;
 use quote;
+
+use proto_service::messages::proto_service_messages;
 
 mod enums;
 mod from_pg_row;
@@ -39,9 +40,9 @@ pub struct Codegen {
 }
 
 impl Codegen {
-    pub fn new(proto_descriptior: impl AsRef<Path>) -> Self {
+    pub fn new(proto_descriptor: impl AsRef<Path>) -> Self {
         Codegen {
-            proto_descriptior: proto_descriptior.as_ref().to_path_buf(),
+            proto_descriptior: proto_descriptor.as_ref().to_path_buf(),
             ..Codegen::default()
         }
     }
@@ -50,7 +51,10 @@ impl Codegen {
         self.packages.push(package);
     }
 
-    pub fn build(&self, target: impl AsRef<Path>) -> Result<(), Error> {
+    pub fn build<T>(&self, target: impl AsRef<Path>, namespace: T) -> Result<(), Error>
+    where
+        T: Display,
+    {
         let buf = fs::read(&self.proto_descriptior).unwrap();
         let file_descriptor_set = FileDescriptorSet::decode(&*buf).unwrap();
 
@@ -108,7 +112,7 @@ impl Codegen {
             let queryable_tokens = queryable::queryable(&message, package);
             let service_tokens = service::service(&message, package);
 
-            let proto_service_tokens = proto_service::proto_service(&service, &messages, package);
+            let proto_service_tokens = proto_service::proto_service(&service, &messages, package, &namespace);
 
             let message_names = proto_service_messages(&service, &messages, package)
                 .into_iter()
@@ -116,10 +120,12 @@ impl Codegen {
 
             let enum_tokens = enums::enums(&service, &messages, &enums, package);
 
+            let package_namespace = quote::format_ident!("crate::proto::proto::{}", namespace.to_string());
+
             let result = quote::quote! {
                 pub mod #mod_name {
                     use super::*;
-                    use crate::proto::proto::santa_cruz::{
+                    use #package_namespace::{
                         #(#message_names ,)*
                     };
 
